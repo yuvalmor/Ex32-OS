@@ -28,12 +28,6 @@
 #define C_FILE 'c'
 #define DOT '.'
 
-/*
-typedef struct{
-    char* name;
-    char* path;
-}Student;
-*/
 /**
  *
  */
