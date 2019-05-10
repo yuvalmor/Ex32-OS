@@ -20,6 +20,8 @@
 #define STANDARD_OUTPUT 1
 #define FILE_COMPILED 1
 #define FILE_PLACE 1
+#define SUCCESS 1
+#define SEC 1
 #define NUMBER_OF_ELEMENTS 2
 #define NUMBER_OF_LINES 3
 #define MAX_CHAR_IN_LINE 150
@@ -36,56 +38,67 @@
 #define GCC_COMMAND "gcc"
 #define GCC_FLAG "-o"
 #define COMPILED_FILE_NAME "program.out"
+#define RESULT_FILE "results.csv"
 #define EXECUTE_COMPILED_FILE "./program.out"
 #define EXECUTE_COMPILED_COMPARE_PROGRAM "./comp.out"
-#define OUTPUT_FILE "programOutput.txt"
-#define RESULT_FILE "results.csv"
-
+#define END_OF_TXT ".txt"
+// Grades and reasons
 #define NO_C_FILE 0
 #define IDENTICAL 1
 #define DIFFERENT 2
 #define SAME 3
 #define COMPILATION_ERROR 4
 #define TIMEOUT 5
-
 #define NO_C_GRADE "0"
 #define COMPILATION_GRADE "20"
 #define TIMEOUT_GRADE "40"
 #define DIFFERENT_GRADE "60"
 #define SAME_GRADE "80"
 #define IDENTICAL_GRADE "100"
-
-
-#define GRADE_0 "NO_C_FILE\n"
-#define GRADE_20 "COMPILATION_ERROR\n"
-#define GRADE_40 "TIMEOUT\n"
-#define GRADE_60 "BAD_OUTPUT\n"
-#define GRADE_80 "SIMILAR_OUTPUT\n"
-#define GRADE_100 "GREAT_JOB\n"
+#define GRADE_0 "NO_C_FILE"
+#define GRADE_20 "COMPILATION_ERROR"
+#define GRADE_40 "TIMEOUT"
+#define GRADE_60 "BAD_OUTPUT"
+#define GRADE_80 "SIMILAR_OUTPUT"
+#define GRADE_100 "GREAT_JOB"
+// macro to identify c files
 #define C_LOC(X) (X-1)
 #define DOT_LOC(X) (X-2)
 
 /**
- *
+ * The function EndProgram - write the error message (as a result from system call failure),
+ * To file descriptor 2 (stderr), and exit the program.
  */
 void EndProgram(){
     write(STDERR_FILENO,ERROR_MESSAGE,strlen(ERROR_MESSAGE));
     exit(ERROR);
 }
-
 /**
- *
+ * The function getPaths - reads the three lines from the configuration file,
+ * And initial the given parameters with the correct value.
+ * @param configPath - the path to the configuration file,
+ * That holds the paths to the others files.
+ * @param directory - the path to the directory that contain the students directorys.
+ * @param input - path to the input text
+ * @param output - path to the correct output text
  */
-void getPaths(const char* path, char* directory,char* input,char* output){
+void getPaths(const char* configPath, char* directory,char* input,char* output){
+    // Buffer for reading
     char buffer [MAX_CHAR_IN_LINE*NUMBER_OF_LINES];
-    int fd = open(path,O_RDONLY);
+    int fd = open(configPath,O_RDONLY);
+    // Check the system call open
     if(fd<INITIAL_VALUE){
         EndProgram();
     }
+    // Check the system call read after reading from the file
     if(read(fd,buffer,MAX_CHAR_IN_LINE*NUMBER_OF_LINES)==SYSTEM_CALL_FAILURE) {
         close(fd);
         EndProgram();
     }
+    /**
+     * Split the buffer into its lines,
+     * And save them in the relevant parameters.
+     */
     char* line = strtok(buffer,ENTER);
     if(line!=NULL){
         strcpy(directory,line);
@@ -101,7 +114,11 @@ void getPaths(const char* path, char* directory,char* input,char* output){
     }
 }
 
-
+/**
+ * The function IsCFile - checks if the file is c file.
+ * @param fileName - the name of the file
+ * @return true if its c file,and false otherwise
+ */
 bool IsCFile(char* fileName){
     size_t length = strlen(fileName);
     // Checks if the suffix of the file coordinate c files
@@ -111,37 +128,59 @@ bool IsCFile(char* fileName){
     return false;
 }
 
-
+/**
+ * The function - searchFileInDirectory search c files recursively,
+ * in the given directory path and its sub directory,
+ * And update the parameter filePath.
+ * @param directoryPath - the path to the initial directory
+ * @param filePath - parameter that will hold the file path
+ */
 void searchFileInDirectory(char* directoryPath, char* filePath){
     char path [MAX_CHAR_IN_LINE]={};
     // Pointer for directory entry
     struct dirent* pDirent;
     DIR* pDir = opendir(directoryPath);
+    // Stop condition
     if(!pDir){
         return;
     }
     while((pDirent=readdir(pDir))!= NULL){
-        // Checks that its not the previous or current directory
+        // Checks that its not the previous or current directory (. / ..)
         if(strcmp(pDirent->d_name,CURRENT_DIR)!= SUBTRACTION &&
         strcmp(pDirent->d_name,PREVIOUS_DIR)!=SUBTRACTION){
+            // Update the path to the current directory
             strcpy(path,directoryPath);
             strcat(path,NEXT_PATH);
             strcat(path,pDirent->d_name);
             // Checks if the type is regular file
             if(pDirent->d_type==DT_REG){
+                // If its the C file, save it in the parameter filePath
                 if(IsCFile(pDirent->d_name)){
                     strcpy(filePath,path);
                 }
             }
+            // Repeat it recursive
             searchFileInDirectory(path,filePath);
         }
     }
-    closedir(pDir);
+    // close and check
+    if(closedir(pDir)==SYSTEM_CALL_FAILURE){
+        EndProgram();
+    }
 }
 
-
-void RunStudentFile(char* const inputPath){
+/**
+ *
+ */
+int RunStudentFile(char* const inputPath, char const* studentName){
     pid_t pid;
+    int status;
+    int time=INITIAL_VALUE;
+
+    char outputFileName[MAX_CHAR_IN_LINE]={};
+    strcpy(outputFileName,studentName);
+    strcat(outputFileName,END_OF_TXT);
+
     char* const args[] ={EXECUTE_COMPILED_FILE,NULL};
     if((pid = fork()) == SYSTEM_CALL_FAILURE){
         EndProgram();
@@ -149,11 +188,11 @@ void RunStudentFile(char* const inputPath){
     if(pid == CHILD_PID) {
         int in;
         int out;
-        in = open(inputPath, O_RDONLY);
+        in = open(inputPath,O_RDONLY);
         if (in == SYSTEM_CALL_FAILURE) {
             EndProgram();
         }
-        out = open(OUTPUT_FILE, O_RDWR | O_CREAT | O_TRUNC, PERMISSION);
+        out = open(outputFileName,O_WRONLY |O_TRUNC|O_CREAT,PERMISSION);
         if (out == SYSTEM_CALL_FAILURE) {
             close(in);
             EndProgram();
@@ -174,10 +213,18 @@ void RunStudentFile(char* const inputPath){
         execvp(args[INITIAL_VALUE], args);
         EndProgram();
     }
+    while (time<TIMEOUT && !(waitpid(pid,&status,WNOHANG))){
+        time++;
+        sleep(SEC);
+    }
+    if(time==TIMEOUT){
+        return INITIAL_VALUE;
+    }
+    return SUCCESS;
 }
 
 
-int CompileStudentFile(char* const studentFilePath){
+signed int CompileStudentFile(char* const studentFilePath){
     int status;
     pid_t pid;
     char* const args[] = {GCC_COMMAND,GCC_FLAG,COMPILED_FILE_NAME,studentFilePath,NULL};
@@ -192,18 +239,17 @@ int CompileStudentFile(char* const studentFilePath){
     if(waitpid(pid,&status,INITIAL_VALUE)==SYSTEM_CALL_FAILURE){
         EndProgram();
     }
-    if(WEXITSTATUS(status)==INITIAL_VALUE){
-        return FILE_COMPILED;
+    if(WEXITSTATUS(status)!=INITIAL_VALUE){
+        return INITIAL_VALUE;
     }
-    return ERROR;
+    return FILE_COMPILED;
 }
 
 
-int CompareOutput(char* const outputPath){
+int CompareOutput(char* const outputPath, char* const programOutputPath){
     int status;
     pid_t pid;
-    char* const args[] ={EXECUTE_COMPILED_COMPARE_PROGRAM,outputPath,
-                         OUTPUT_FILE,NULL};
+    char* const args[] = {EXECUTE_COMPILED_COMPARE_PROGRAM,outputPath,programOutputPath,NULL};
     if((pid = fork()) == SYSTEM_CALL_FAILURE){
         EndProgram();
     }
@@ -218,11 +264,14 @@ int CompareOutput(char* const outputPath){
     return WEXITSTATUS(status);
 }
 
-void SaveToFile(const char* name, int status){
+void SaveToFile(const char* name, int status, bool firstStudent){
     char line[MAX_CHAR_IN_LINE]={};
+    if(!firstStudent){
+        strcat(line,ENTER);
+    }
     strcpy(line,name);
     strcat(line,COMMA);
-    int fd = open(RESULT_FILE, O_RDWR | O_CREAT | O_TRUNC, PERMISSION);
+    int fd = open(RESULT_FILE,O_WRONLY|O_APPEND|O_CREAT,PERMISSION);
     if (fd == SYSTEM_CALL_FAILURE) {
         EndProgram();
     }
@@ -261,7 +310,6 @@ void SaveToFile(const char* name, int status){
             break;
     }
     write(fd,line,strlen(line));
-    close(fd);
 }
 
 
@@ -297,23 +345,35 @@ int main(int argc, char* argv[]) {
 
             searchFileInDirectory(directoryPath,studentCFilePath);
 
-            printf("name =  %s\n",studentName);
-            printf("path = %s\n",studentCFilePath);
-            printf("length = %d\n",(int)strlen(studentCFilePath));
-
             // In case that c file exist
             if(strlen(studentCFilePath)!=EMPTY_PATH){
                 int compile = CompileStudentFile(studentCFilePath);
                 if(compile){
-                    RunStudentFile(input);
-                    int compare = CompareOutput(output);
-                    printf("compare = %d\n",compare);
-                    SaveToFile(studentName,compare);
-                    //dont forget unlink!!!!!!!!!!!
+                    int a = RunStudentFile(input,studentName);
+                    // creating the path for the program output file
+                    char programOutputPath[MAX_CHAR_IN_LINE] = {};
+                    strcpy(programOutputPath,getcwd(programOutputPath,sizeof(programOutputPath)));
+                    strcat(programOutputPath,NEXT_PATH);
+                    strcat(programOutputPath,studentName);
+                    strcat(programOutputPath,END_OF_TXT);
+                    // in case that the program running didn't took 5 sec
+                    if(a){
+                        int compare = CompareOutput(output,programOutputPath);
+                        SaveToFile(studentName,compare);
+                    } else {
+                        SaveToFile(studentName,TIMEOUT);
+                    }
+                    unlink(programOutputPath);
                 }
+                else{
+                    SaveToFile(studentName,COMPILATION_ERROR);
+                }
+            } else{
+                SaveToFile(studentName,NO_C_FILE);
             }
         }
     }
+    unlink(COMPILED_FILE_NAME);
     closedir(pDir);
-    return 0;
+    return INITIAL_VALUE;
 }
